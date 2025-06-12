@@ -1,0 +1,5 @@
+.mypy_cache
+data
+.env
+mypy.ini
+interview-bot
