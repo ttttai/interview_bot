@@ -9,10 +9,10 @@
 ## 画面
 
 ### 面接画面
-![img/feedback](img/feedback.png)
+![interview](img/interview.png)
 
 ### フィードバック画面
-![img/feedback](img/feedback.png)
+![feedback](img/feedback.png)
 
 ## 実行方法
 
