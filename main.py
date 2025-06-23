@@ -228,6 +228,72 @@ def get_text_input():
     return st.chat_input("質問を入力してください")
 
 
+def show_feedback():
+    """
+    フィードバック画面を表示
+    """
+    st.markdown("## 📝 面接フィードバックレポート")
+
+    with st.spinner("フィードバックを生成しています..."):
+        # 会話履歴を整形
+        history_text = "\n".join(
+            [f"{msg['role']}: {msg['content']}" for msg in st.session_state.messages]
+        )
+        filler_info = analyze_fillers(st.session_state.messages)
+
+        # フィードバックを生成
+        feedback_report = generate_feedback(history_text, filler_info)
+        st.markdown(feedback_report)
+
+        with st.expander("フィラー分析詳細"):
+            st.write(f"**検出されたフィラーの総数:** {filler_info['total_count']} 回")
+            if filler_info["total_count"] > 0:
+                st.write("**内訳:**")
+                for word, count in filler_info["details"].items():
+                    st.write(f"- {word}: {count} 回")
+            else:
+                st.write("フィラーは検出されませんでした。素晴らしいです！")
+
+    if st.button("もう一度面接を始める"):
+        st.session_state.clear()
+        st.rerun()
+
+
+def start_interview(audio_info):
+    """
+    面接を始める
+    """
+    if "chain" not in st.session_state:
+        st.session_state.chain = setup_chain(difficulty=st.session_state.difficulty)
+        initial_response = st.session_state.chain.predict(input="")
+        st.session_state.messages = [{"role": "assistant", "content": initial_response}]
+        st.session_state.last_audio_id = None
+
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    text_input = get_text_input()
+    audio_input = get_audio_input(audio_info)
+    user_input = text_input if text_input else audio_input
+
+    if user_input:
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+        with st.chat_message("assistant"):
+            with st.spinner("AIが応答を考えています..."):
+                response = st.session_state.chain.predict(input=user_input)
+                st.markdown(response)
+                if st.session_state.get("is_tts_enabled", False):
+                    play_tts(response)
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": response}
+                )
+        st.rerun()
+
+
 if __name__ == "__main__":
     st.set_page_config(page_title="AI面接", page_icon="🤝")
     st.title("AI面接")
@@ -235,68 +301,9 @@ if __name__ == "__main__":
     audio_info = sidebar()
 
     if st.session_state.get("show_feedback", False):
-        st.markdown("## 📝 面接フィードバックレポート")
-
-        with st.spinner("フィードバックを生成しています..."):
-            # 会話履歴を整形
-            history_text = "\n".join(
-                [
-                    f"{msg['role']}: {msg['content']}"
-                    for msg in st.session_state.messages
-                ]
-            )
-            filler_info = analyze_fillers(st.session_state.messages)
-
-            # フィードバックを生成
-            feedback_report = generate_feedback(history_text, filler_info)
-            st.markdown(feedback_report)
-
-            with st.expander("フィラー分析詳細"):
-                st.write(
-                    f"**検出されたフィラーの総数:** {filler_info['total_count']} 回"
-                )
-                if filler_info["total_count"] > 0:
-                    st.write("**内訳:**")
-                    for word, count in filler_info["details"].items():
-                        st.write(f"- {word}: {count} 回")
-                else:
-                    st.write("フィラーは検出されませんでした。素晴らしいです！")
-
-        if st.button("もう一度面接を始める"):
-            st.session_state.clear()
-            st.rerun()
+        show_feedback()
     elif st.session_state.get("interview_started", False):
-        if "chain" not in st.session_state:
-            st.session_state.chain = setup_chain(difficulty=st.session_state.difficulty)
-            initial_response = st.session_state.chain.predict(input="")
-            st.session_state.messages = [
-                {"role": "assistant", "content": initial_response}
-            ]
-            st.session_state.last_audio_id = None
-
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-
-        text_input = get_text_input()
-        audio_input = get_audio_input(audio_info)
-        user_input = text_input if text_input else audio_input
-
-        if user_input:
-            st.session_state.messages.append({"role": "user", "content": user_input})
-            with st.chat_message("user"):
-                st.markdown(user_input)
-
-            with st.chat_message("assistant"):
-                with st.spinner("AIが応答を考えています..."):
-                    response = st.session_state.chain.predict(input=user_input)
-                    st.markdown(response)
-                    if st.session_state.get("is_tts_enabled", False):
-                        play_tts(response)
-                    st.session_state.messages.append(
-                        {"role": "assistant", "content": response}
-                    )
-            st.rerun()
+        start_interview(audio_info)
     else:
         st.markdown(
             """
