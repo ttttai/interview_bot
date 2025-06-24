@@ -10,6 +10,7 @@ from langchain.prompts import (
     PromptTemplate,
 )
 from langchain.chains import LLMChain
+from langchain.document_loaders import PyPDFLoader
 from dotenv import load_dotenv
 from streamlit_mic_recorder import mic_recorder
 from openai import OpenAI
@@ -18,6 +19,7 @@ import pygame
 import io
 from janome.tokenizer import Tokenizer
 from collections import Counter
+import tempfile
 
 # 環境変数の読み込みとクライアント初期化
 load_dotenv()
@@ -105,7 +107,7 @@ def generate_feedback(conversation_history, filler_info):
     return feedback
 
 
-def setup_chain(difficulty):
+def setup_chain(difficulty, resume_text=None):
     if difficulty == "easy":
         system_prompt = """
             あなたは、親切で優しいIT企業の採用面接官です。
@@ -127,6 +129,11 @@ def setup_chain(difficulty):
             短い時間で学生の本質を見抜くため、少し高圧的でチャレンジングな質問を投げかけてください。
             まずは「面接を始めます。自己紹介を簡潔に述べてください。」と挨拶してください。
             """
+
+    if resume_text:
+        system_prompt += (
+            f"\n\n# 履歴書情報：以下の内容を踏まえて質問してください。\n{resume_text}"
+        )
 
     llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
 
@@ -184,6 +191,18 @@ def sidebar():
                     st.rerun()
                 else:
                     st.warning("難易度を設定してください")
+
+            st.markdown("### 📄 履歴書をアップロード")
+            uploaded_file = st.file_uploader("PDF形式の履歴書", type=["pdf"])
+            if uploaded_file:
+                if "resume_text" not in st.session_state:
+                    try:
+                        resume_text = extract_text_from_pdf(uploaded_file)
+                        st.session_state.resume_text = resume_text
+                        st.success("履歴書を読み込みました")
+                    except Exception as e:
+                        st.error(f"履歴書の読み込み中にエラーが発生しました: {e}")
+
         else:
             # 面接中の操作画面
             st.markdown(f"**難易度:** {st.session_state.difficulty}")
@@ -228,6 +247,17 @@ def get_text_input():
     return st.chat_input("質問を入力してください")
 
 
+def extract_text_from_pdf(uploaded_file):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+        tmp_file.write(uploaded_file.read())
+        tmp_path = tmp_file.name
+
+    loader = PyPDFLoader(tmp_path)
+    docs = loader.load()
+    full_text = "\n".join([doc.page_content for doc in docs])
+    return full_text
+
+
 def show_feedback():
     """
     フィードバック画面を表示
@@ -264,7 +294,10 @@ def start_interview(audio_info):
     面接を始める
     """
     if "chain" not in st.session_state:
-        st.session_state.chain = setup_chain(difficulty=st.session_state.difficulty)
+        resume_text = st.session_state.get("resume_text", None)
+        st.session_state.chain = setup_chain(
+            difficulty=st.session_state.difficulty, resume_text=resume_text
+        )
         initial_response = st.session_state.chain.predict(input="")
         st.session_state.messages = [{"role": "assistant", "content": initial_response}]
         st.session_state.last_audio_id = None
